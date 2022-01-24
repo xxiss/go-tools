@@ -10,13 +10,13 @@ import (
 	"github.com/go-redis/redis/v8"
 )
 
-type redisCache struct {
+type Redis struct {
 	*redis.Client
 	mu  sync.RWMutex
 	mus map[string]*sync.RWMutex
 }
 
-func NewRedis(host string, port int, password string, db int) (*redisCache, error) {
+func NewRedis(host string, port int, password string, db int) (*Redis, error) {
 	client := redis.NewClient(&redis.Options{
 		Addr:     fmt.Sprintf("%s:%d", host, port),
 		Password: password,
@@ -25,14 +25,14 @@ func NewRedis(host string, port int, password string, db int) (*redisCache, erro
 	if _, err := client.Ping(context.TODO()).Result(); err != nil {
 		return nil, err
 	}
-	return &redisCache{
+	return &Redis{
 		Client: client,
 		mus:    make(map[string]*sync.RWMutex),
 	}, nil
 	// defer client.Close()
 }
 
-func (c *redisCache) gcRWMutex(key string) *sync.RWMutex {
+func (c *Redis) gcRWMutex(key string) *sync.RWMutex {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	if c.mus[key] == nil {
@@ -41,7 +41,7 @@ func (c *redisCache) gcRWMutex(key string) *sync.RWMutex {
 	return c.mus[key]
 }
 
-func (c *redisCache) LockRun(id string, timeout time.Duration, fn func() error) error {
+func (c *Redis) LockRun(id string, timeout time.Duration, fn func() error) error {
 	if _, err := c.Client.SetNX(context.TODO(), id, "ok", timeout).Result(); err != nil {
 		return fmt.Errorf("the system is busy. please try again later. id:%s", id)
 	}
@@ -49,7 +49,7 @@ func (c *redisCache) LockRun(id string, timeout time.Duration, fn func() error) 
 	return fn()
 }
 
-func (c *redisCache) Get(key string, result interface{}) error {
+func (c *Redis) Get(key string, result interface{}) error {
 	rel, err := c.Client.Get(context.TODO(), key).Result()
 	if err != nil {
 		return err
@@ -57,7 +57,7 @@ func (c *redisCache) Get(key string, result interface{}) error {
 	return json.Unmarshal([]byte(rel), result)
 }
 
-func (c *redisCache) Set(key string, d time.Duration, create func() (interface{}, error)) error {
+func (c *Redis) Set(key string, d time.Duration, create func() (interface{}, error)) error {
 	mu := c.gcRWMutex(key)
 	mu.Lock()
 	defer mu.Unlock()
@@ -74,7 +74,7 @@ func (c *redisCache) Set(key string, d time.Duration, create func() (interface{}
 	return err
 }
 
-func (c *redisCache) GetOrSet(key string, result interface{}, d time.Duration, create func() (interface{}, error)) error {
+func (c *Redis) GetOrSet(key string, result interface{}, d time.Duration, create func() (interface{}, error)) error {
 	mu := c.gcRWMutex(key)
 	mu.Lock()
 	defer mu.Unlock()
@@ -99,6 +99,6 @@ func (c *redisCache) GetOrSet(key string, result interface{}, d time.Duration, c
 	return json.Unmarshal(body, result)
 }
 
-func (c *redisCache) Remove(key string) {
+func (c *Redis) Remove(key string) {
 	c.Client.Del(context.TODO(), key)
 }
