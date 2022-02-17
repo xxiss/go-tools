@@ -57,24 +57,24 @@ func (c *Redis) Get(key string, result interface{}) error {
 	return json.Unmarshal([]byte(rel), result)
 }
 
-func (c *Redis) Set(key string, d time.Duration, create func() (interface{}, error)) error {
+func (c *Redis) Set(key string, create func() (*Item, error)) error {
 	mu := c.gcRWMutex(key)
 	mu.Lock()
 	defer mu.Unlock()
 
-	value, err := create()
+	item, err := create()
 	if err != nil {
 		return err
 	}
-	body, err := json.Marshal(value)
+	body, err := json.Marshal(item.Value)
 	if err != nil {
 		return err
 	}
-	_, err = c.Client.Set(context.TODO(), key, body, d).Result()
+	_, err = c.Client.Set(context.TODO(), key, body, item.Duration).Result()
 	return err
 }
 
-func (c *Redis) GetOrSet(key string, result interface{}, d time.Duration, create func() (interface{}, error)) error {
+func (c *Redis) GetOrSet(key string, result interface{}, create func() (*Item, error)) error {
 	mu := c.gcRWMutex(key)
 	mu.Lock()
 	defer mu.Unlock()
@@ -84,15 +84,15 @@ func (c *Redis) GetOrSet(key string, result interface{}, d time.Duration, create
 		return json.Unmarshal([]byte(rel), result)
 	}
 
-	value, err := create()
+	item, err := create()
 	if err != nil {
 		return err
 	}
-	body, err := json.Marshal(value)
+	body, err := json.Marshal(item.Value)
 	if err != nil {
 		return err
 	}
-	if _, err := c.Client.Set(context.TODO(), key, body, d).Result(); err != nil {
+	if _, err := c.Client.Set(context.TODO(), key, body, item.Duration).Result(); err != nil {
 		return err
 	}
 

@@ -91,12 +91,12 @@ func (c *DB) load() (err error) {
 	return nil
 }
 
-func (c *DB) save(key string, item memoryItem) error {
-	body := json.RawMessage(item.Body)
+func (c *DB) save(key string, mem memoryItem) error {
+	body := json.RawMessage(mem.Body)
 	row := dbItem{
 		Key:        key,
 		Value:      &body,
-		Expiration: item.Expiration,
+		Expiration: mem.Expiration,
 	}
 	if err := c.db.Clauses(clause.OnConflict{
 		Columns:   []clause.Column{{Name: "key"}},
@@ -111,8 +111,8 @@ func (c *DB) delete(key string) error {
 	return c.db.Table(c.tableName).Where("`key` = ? LIMIT 1", key).Delete(&dbItem{}).Error
 }
 
-func (c *DB) Set(key string, d time.Duration, create func() (interface{}, error)) error {
-	if err := c.Memory.Set(key, d, create); err != nil {
+func (c *DB) Set(key string, create func() (*Item, error)) error {
+	if err := c.Memory.Set(key, create); err != nil {
 		return err
 	}
 
@@ -122,7 +122,7 @@ func (c *DB) Set(key string, d time.Duration, create func() (interface{}, error)
 	return nil
 }
 
-func (c *DB) GetOrSet(key string, result interface{}, d time.Duration, create func() (interface{}, error)) error {
+func (c *DB) GetOrSet(key string, result interface{}, create func() (*Item, error)) error {
 	mu := c.gcRWMutex(key)
 	mu.Lock()
 	defer mu.Unlock()
@@ -132,24 +132,24 @@ func (c *DB) GetOrSet(key string, result interface{}, d time.Duration, create fu
 		return json.Unmarshal(entry.Body, &result)
 	}
 
-	value, err := create()
+	item, err := create()
 	if err != nil {
 		return err
 	}
-	body, err := json.Marshal(value)
+	body, err := json.Marshal(item.Value)
 	if err != nil {
 		return err
 	}
-	item := memoryItem{Body: body}
-	if d != 0 {
-		item.Expiration = time.Now().Add(d).UnixNano()
+	mem := memoryItem{Body: body}
+	if item.Duration != 0 {
+		mem.Expiration = time.Now().Add(item.Duration).UnixNano()
 	}
 
-	go c.save(key, item)
+	go c.save(key, mem)
 
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	c.Storage[key] = item
+	c.Storage[key] = mem
 
 	return json.Unmarshal(body, &result)
 }

@@ -114,31 +114,31 @@ func (c *Memory) Get(key string, result interface{}) error {
 	return json.Unmarshal(entry.Body, &result)
 }
 
-func (c *Memory) Set(key string, d time.Duration, create func() (interface{}, error)) error {
+func (c *Memory) Set(key string, create func() (*Item, error)) error {
 	mu := c.gcRWMutex(key)
 	mu.Lock()
 	defer mu.Unlock()
 
-	value, err := create()
+	item, err := create()
 	if err != nil {
 		return err
 	}
-	body, err := json.Marshal(value)
+	body, err := json.Marshal(item.Value)
 	if err != nil {
 		return err
 	}
-	item := memoryItem{Body: body}
-	if d != 0 {
-		item.Expiration = time.Now().Add(d).UnixNano()
+	mem := memoryItem{Body: body}
+	if item.Duration != 0 {
+		mem.Expiration = time.Now().Add(item.Duration).UnixNano()
 	}
 
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	c.Storage[key] = item
+	c.Storage[key] = mem
 	return nil
 }
 
-func (c *Memory) GetOrSet(key string, result interface{}, d time.Duration, create func() (interface{}, error)) error {
+func (c *Memory) GetOrSet(key string, result interface{}, create func() (*Item, error)) error {
 	mu := c.gcRWMutex(key)
 	mu.Lock()
 	defer mu.Unlock()
@@ -148,22 +148,22 @@ func (c *Memory) GetOrSet(key string, result interface{}, d time.Duration, creat
 		return json.Unmarshal(entry.Body, &result)
 	}
 
-	value, err := create()
+	item, err := create()
 	if err != nil {
 		return err
 	}
-	body, err := json.Marshal(value)
+	body, err := json.Marshal(item.Value)
 	if err != nil {
 		return err
 	}
-	item := memoryItem{Body: body}
-	if d != 0 {
-		item.Expiration = time.Now().Add(d).UnixNano()
+	mem := memoryItem{Body: body}
+	if item.Duration != 0 {
+		mem.Expiration = time.Now().Add(item.Duration).UnixNano()
 	}
 
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	c.Storage[key] = item
+	c.Storage[key] = mem
 
 	return json.Unmarshal(body, &result)
 }
